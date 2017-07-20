@@ -5,7 +5,7 @@ const request = require('request');
 const firebase = require('firebase');
 
 var config = {
-      apiKey: "***REMOVED***",
+      apiKey: "*** REMOVED ***",
       authDomain: "glass-counter.firebaseapp.com",
       databaseURL: "https://glass-counter.firebaseio.com",
       projectId: "glass-counter",

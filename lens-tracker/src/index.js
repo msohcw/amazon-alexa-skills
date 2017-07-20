@@ -6,7 +6,7 @@ const firebase = require('firebase');
 var moment = require('moment');
 
 var config = {
-    apiKey: "***REMOVED***",
+    apiKey: "*** REMOVED ***",
     authDomain: "lens-tracker.firebaseapp.com",
     databaseURL: "https://lens-tracker.firebaseio.com",
     projectId: "lens-tracker",
