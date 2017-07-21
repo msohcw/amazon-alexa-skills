@@ -68,7 +68,7 @@ const handlers = {
               'day' : (new Date()).getDay()
             });
           }
-          if(last['count'] == 8){
+          if(last['count'] + 1 == 8){
             that.emit(':tell', that.t('EIGHT_MESSAGE'));
           }else{
             that.emit(':tell', that.t('DRINK_MESSAGE'));
