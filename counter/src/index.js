@@ -34,7 +34,7 @@ const languageStrings = {
 
 const handlers = {
     'LaunchRequest': function () {
-        this.emit('GetCount');
+        this.emit('GetCountIntent');
     },
     'GetCountIntent': function () {
         var that = this;
