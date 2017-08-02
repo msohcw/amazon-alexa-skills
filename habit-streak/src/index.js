@@ -6,13 +6,14 @@ const firebase = require('firebase');
 var moment = require('moment');
 
 var config = {
-    apiKey: "*** REMOVED ***",
-    authDomain: "lens-tracker.firebaseapp.com",
-    databaseURL: "https://lens-tracker.firebaseio.com",
-    projectId: "lens-tracker",
-    storageBucket: "lens-tracker.appspot.com",
-    messagingSenderId: "1092030441079"
-  };
+  apiKey: "*** REMOVED ***",
+  authDomain: "habit-streak-faaa3.firebaseapp.com",
+  databaseURL: "https://habit-streak-faaa3.firebaseio.com",
+  projectId: "habit-streak-faaa3",
+  storageBucket: "habit-streak-faaa3.appspot.com",
+  messagingSenderId: "16425995117"
+};
+
 firebase.initializeApp(config);
 
 const database = firebase.database();
@@ -22,52 +23,134 @@ const APP_ID = undefined;  // TODO replace with your app ID (OPTIONAL).
 const languageStrings = {
     'en': {
         translation: {
-            SKILL_NAME: 'Lenses Tracker',
-            HELP_MESSAGE: 'Say Reset when you\'re putting on a new pair of contact lenses. Say How Long to find out the last time you changed contact lenses',
+            SKILL_NAME: 'Habit Streak',
+            HELP_MESSAGE: 'Build habits through better streaks. Say Did It to build your streak every day. Say Streak to get your current streak. Say Invert to invert the streak, so that your streak grows automatically but Did It breaks your streak.',
             STOP_MESSAGE: 'Goodbye!',
-            RESET_MESSAGE: 'Okay! Remember to keep those lenses clean.',
-            SINCE_MESSAGE: 'You have used those lenses for $htime. You put them on on $date.',
-            WARNING_MESSAGE: 'You should replace them if you are using biweekly lenses.',
-            NEVER_USE_MESSAGE: 'You\'ve not tracked your usage yet.'
+            INV_BUILD_STREAK: 'Okay. To build your streak every day, say Did It.',
+            INV_BREAK_STREAK: 'Okay. To reset your streak, say Did It.',
+            BREAK_STREAK: "Okay. Try again! Long streaks build strong habits.",
+            BUILD_STREAK: "Good job! Keep building that streak and you'll have a strong habit in no time.",
+            STREAK_MESSAGE: 'You\'ve kept up your streak for $htime. Keep going to build a strong habit!',
+            LONG_MESSAGE: 'Your longest streak was for $htime.',
+            START_MESSAGE: 'Let\'s get started building your streak today! Say Did It to build your streak.',
+            TODAY_MESSAGE: 'You\'ve already completed your habit for today.'
         },
     },
 };
+
+const NEG = 'negative';
+const POS = 'positive';
+const DURATION = 'minutes';
+const DT_FORMAT = 'X'
 
 const handlers = {
     'LaunchRequest': function () {
         this.emit('AMAZON.HelpIntent');
     },
-    'SinceIntent': function () {
+    'InvertIntent': function () {
+        var that = this;
+        var reference = this.handler.userId.replace(/\[|\.|\]/g, "_");
+        database.ref('/users/' + reference).once('value').then(function(snapshot){
+          var last = snapshot.val();
+          if (last === null) {
+            that.emit('Start')
+          } else {
+            var msg = (last['type'] == POS) ? that.t('INV_BREAK_STREAK'): that.t('INV_BUILD_STREAK');
+            last['type'] = (last['type'] == POS) ? NEG : POS;
+            if (last['type'] == POS) {
+              last['count'] = 0;
+              last['moment'] = moment().subtract({days: 10}).format(DT_FORMAT);
+            } else {
+              last['moment'] = moment().format(DT_FORMAT);
+            }
+
+            database.ref('users/' + reference).set(last);
+            that.emit(":tell", msg);
+          }
+        });
+    },
+    'Start': function () {
+        var reference = this.handler.userId.replace(/\[|\.|\]/g, "_");
+        var initial = moment().subtract({days: 10}).format(DT_FORMAT);
+        var clean = {
+          'type': POS, 
+          'moment': initial,
+          'count': 0,
+          'long': 0
+        };
+        database.ref('users/' + reference).set(clean);
+        this.emit(':tell', this.t('START_MESSAGE'));
+    },
+    'StreakIntent': function () {
         var that = this;
         var reference = this.handler.userId.replace(/\[|\.|\]/g, "_");
         database.ref('/users/' + reference).once('value').then(function(snapshot){
           var last = snapshot.val();
           if(last === null){
-            that.emit(':tell', that.t('NEVER_USE_MESSAGE'));
+            that.emit('Start');
           }else{
-            var now = moment(moment().format("YYYYMMDD"));
-            var then = moment(last['moment']);
-            var days = now.diff(then, 'days');
-            var weeks = now.diff(then, 'weeks');
-            var use_week = (days % 7 == 0) && (days != 0);
-            days = (days != 1) ? days + ' days' : days + ' day';
-            weeks = (weeks != 1) ? weeks + ' weeks' : weeks + ' week';
-            var htime = (use_week) ? weeks : days;
-            var human_date = then.format("dddd, MMMM Do")
-
-            var message = that.t('SINCE_MESSAGE').replace('$htime', htime).replace('$date', human_date);
-            if (days >= 14) message += that.t('WARNING_MESSAGE');
-            console.log(message)
-            that.emit(':tell', message);
+            var htime = 0;
+            if (last['type'] == POS) {
+              htime = last['count'];
+            } else {
+              var now = moment(moment().format(DT_FORMAT), DT_FORMAT);
+              var then = moment(last['moment'], DT_FORMAT);
+              htime = now.diff(then, DURATION);
+            }
+            last['long'] = Math.max(htime, last['long']);
+            htime = (htime != 1) ? htime + ' days' : htime + ' day';
+            database.ref('users/' + reference).set(last);
+            that.emit(':tell', that.t('STREAK_MESSAGE').replace('$htime', htime));
           }
         });
     },
-    'ResetIntent': function () {
+    'DoItIntent': function () {
+        var that = this;
         var reference = this.handler.userId.replace(/\[|\.|\]/g, "_");
-        database.ref('users/' + reference).set({
-          'moment': moment().format("YYYYMMDD")
+        database.ref('/users/' + reference).once('value').then(function(snapshot){
+          var last = snapshot.val();
+          var now = moment(moment().format(DT_FORMAT), DT_FORMAT);
+          if(last === null){
+            that.emit('Start');
+          }else{
+            var days = now.diff(moment(last['moment'], DT_FORMAT), DURATION);
+            var msg = ""
+            if (last['type'] == POS){
+              if (days == 1) {
+                last['count'] += 1;
+                msg = that.t('BUILD_STREAK');
+              } else if (days < 1) {
+                that.emit(':tell', that.t('TODAY_MESSAGE'));
+                return;
+              } else {
+                last['count'] = 1;
+                msg = that.t('BUILD_STREAK');
+              }
+              last['long'] = Math.max(last['count'], last['long']);
+            } else {
+              last['long'] = Math.max(days, last['long']);
+              msg = that.t('BREAK_STREAK');
+            }
+            last['moment'] = now.format(DT_FORMAT)
+            database.ref('users/' + reference).set(last);
+            that.emit(':tell', msg);
+          }
         });
-        this.emit(':tell', this.t('RESET_MESSAGE'));
+    },
+    'LongIntent': function () {
+        var that = this;
+        var reference = this.handler.userId.replace(/\[|\.|\]/g, "_");
+        database.ref('/users/' + reference).once('value').then(function(snapshot){
+          var last = snapshot.val();
+          var now = moment(moment().format(DT_FORMAT), DT_FORMAT);
+          if(last === null){
+            that.emit('Start');
+          } else {
+            var htime = last['long']; 
+            htime = (htime != 1) ? htime + ' days' : htime + ' day';
+            that.emit(':tell', that.t('LONG_MESSAGE').replace('$htime', htime));
+          }
+        });
     },
     'AMAZON.HelpIntent': function () {
         const speechOutput = this.t('HELP_MESSAGE');
